@@ -66,6 +66,7 @@ class FilterResult(BaseModel):
 class ExtractedClaim(BaseModel):
     claim: str
     source: str
+    source_quote: str  # the EXACT sentence from the application/deck/CV; no quote → claim is dropped
 
 
 class ExtractedClaims(BaseModel):
@@ -108,7 +109,8 @@ class IdeaVsMarketLLM(BaseModel):
 class ContradictionCheckLLM(BaseModel):
     contradicted: bool
     explanation: str
-    conflicting_evidence: Optional[str]
+    contradicting_quote: Optional[str]  # exact sentence from the OTHER artifact; verified in code
+    artifact: Optional[str]             # which artifact the quote came from
 
 
 class TrustClassificationLLM(BaseModel):
@@ -117,6 +119,7 @@ class TrustClassificationLLM(BaseModel):
     detail: str
     explanation: str
     source_url: Optional[str]
+    evidence_is_about_this_company: bool  # name-collision guard: enforced in code
 
 
 class TractionLLM(BaseModel):
@@ -136,7 +139,8 @@ class MemoLLM(BaseModel):
 
 
 class OutreachLLM(BaseModel):
-    draft: str
+    subject: str
+    body: str
 
 
 class SearchCriteriaLLM(BaseModel):
@@ -147,6 +151,8 @@ class SearchCriteriaLLM(BaseModel):
     keywords: List[str]
     cold_start_only: Optional[bool]
     min_founder_score: Optional[int]
+    verified_only: Optional[bool]
+    has_contradictions: Optional[bool]
 
 
 class ChapterTextLLM(BaseModel):
