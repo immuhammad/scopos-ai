@@ -69,12 +69,17 @@ function Command() {
 
   const [pipelineTab, setPipelineTab] = useState<"decision" | "outreach" | "wishlist">("decision");
 
-  const dealsQuery = useQuery({ queryKey: ["deals"], queryFn: () => api.listDeals() });
+  // Fetch ALL deals so deep links to decided deals (from /decisions) resolve;
+  // the pipeline lists below rank only the pending subset.
+  const dealsQuery = useQuery({ queryKey: ["deals", "all"], queryFn: () => api.listDeals("all") });
   const foundersQuery = useQuery({ queryKey: ["founders"], queryFn: () => api.listFounders() });
   const activeThesisQ = useQuery({ queryKey: ["activeThesis"], queryFn: () => api.getActiveThesis() });
   const metricsQ = useQuery({ queryKey: ["metrics"], queryFn: () => api.getMetrics() });
 
-  const deals = dealsQuery.data ?? [];
+  const allDeals = dealsQuery.data ?? [];
+  const deals = useMemo(
+    () => allDeals.filter((d) => d.pipelineStage !== "Approved" && d.pipelineStage !== "Declined"),
+    [allDeals]);
   const founders = foundersQuery.data ?? [];
   const activeThesis = activeThesisQ.data;
 
@@ -123,7 +128,7 @@ function Command() {
 
   const currentList = pipelineTab === "decision" ? decisionList : pipelineTab === "outreach" ? outreachList : wishlist;
   const selectedId = selectedDealParam || currentList[0]?.deal.id || deals[0]?.id || "";
-  const selected = deals.find((d) => d.id === selectedId) ?? deals[0];
+  const selected = allDeals.find((d) => d.id === selectedId) ?? deals[0];
   const selectedIsOutreach = selected ? isOutreachDeal(selected) : false;
   const selectedMatch = activeThesis && selected ? scoreThesisMatch(selected, activeThesis) : null;
 
@@ -263,7 +268,9 @@ function ThesisEngine({ activeThesis }: { activeThesis?: Thesis }) {
   };
 
   return (
-    <div className="border-b border-border bg-surface-1/60 backdrop-blur">
+    // relative z-30: the backdrop-blur creates a stacking context, so without an
+    // explicit z the selector dropdown gets painted under later siblings (search bar).
+    <div className="relative z-30 border-b border-border bg-surface-1/60 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-2 px-4 py-2.5">
         <span className="mr-2 inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
           <Target className="h-3 w-3" /> Thesis engine
@@ -341,8 +348,8 @@ function ThesisSelector({ theses, activeId, onSelect }: { theses: Thesis[]; acti
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-20 mt-1 min-w-[280px] rounded-md border border-border bg-popover p-1 shadow-xl">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-50 mt-1 min-w-[280px] rounded-md border border-border bg-popover p-1 shadow-xl">
             {theses.map((t) => (
               <button key={t.id} onClick={() => { onSelect(t.id); setOpen(false); }}
                 className={cn("block w-full rounded-sm px-2.5 py-1.5 text-left text-xs hover:bg-accent", t.id === activeId && "bg-accent")}>

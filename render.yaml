@@ -1,0 +1,28 @@
+# Render blueprint — deploy the Scopos backend with one click:
+#   https://dashboard.render.com/blueprints → New Blueprint Instance → point at this repo.
+# Fill the four secret keys when prompted. NOTE: the free plan has no persistent
+# disk — SQLite resets on redeploy; after the first boot open the service Shell
+# and run `python -m app.seed.demo` (~20 min of live LLM calls) to seed.
+services:
+  - type: web
+    name: scopos-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./vcbrain.db
+      - key: CORS_ORIGINS
+        value: https://venture-mind-os.lovable.app,http://localhost:8080,http://localhost:5173
