@@ -25,6 +25,29 @@ class FounderRow(Base):
     created_at = mapped_column(String, nullable=False)
 
 
+class PipelineTraceRow(Base):
+    """Agentic traceability: one row per pipeline step per deal."""
+    __tablename__ = "pipeline_traces"
+    id = mapped_column(Integer, primary_key=True, autoincrement=True)
+    deal_id = mapped_column(String, index=True, nullable=False)
+    step = mapped_column(String, nullable=False)
+    model = mapped_column(String, default="")
+    summary = mapped_column(Text, default="")
+    duration_ms = mapped_column(Integer, default=0)
+    created_at = mapped_column(String, nullable=False)
+
+
+class OutreachStateRow(Base):
+    """Simulated-only outreach: nothing is ever actually sent."""
+    __tablename__ = "outreach_states"
+    deal_id = mapped_column(String, primary_key=True)
+    status = mapped_column(String, default="not_sent")  # "not_sent" | "sent" (frontend enum)
+    sent_at = mapped_column(String, nullable=True)
+    channel = mapped_column(String, nullable=True)
+    subject = mapped_column(Text, nullable=True)
+    body = mapped_column(Text, nullable=True)
+
+
 class DealRow(Base):
     __tablename__ = "deals"
     id = mapped_column(String, primary_key=True)
@@ -48,6 +71,8 @@ class DealRow(Base):
     viable = mapped_column(Boolean, default=True)  # spam/joke filter verdict; non-viable stay out of dealflow
     filter_reason = mapped_column(Text, nullable=True)
     errors = mapped_column(JSON, default=list)  # degraded-pipeline notes, additive field
+    first_signal_at = mapped_column(String, nullable=True)
+    decided_at = mapped_column(String, nullable=True)
 
 
 class DealFounderRow(Base):
@@ -85,6 +110,8 @@ class ClaimRow(Base):
     conflicting_evidence = mapped_column(Text, nullable=True)
     ai_explanation = mapped_column(Text, default="")
     review_notes = mapped_column(JSON, default=list)
+    source_quote = mapped_column(Text, nullable=True)   # exact sentence the claim was extracted from
+    artifact = mapped_column(String, nullable=True)     # which artifact the contradicting quote came from
 
 
 class AxisAssessmentRow(Base):
@@ -103,13 +130,19 @@ class ThesisRow(Base):
     __tablename__ = "theses"
     id = mapped_column(String, primary_key=True)
     name = mapped_column(String, nullable=False)
+    # legacy plural columns kept for migration; the API serves the singular frontend shape
     sectors = mapped_column(JSON, default=list)
-    stage = mapped_column(String, default="Seed")
     geography = mapped_column(JSON, default=list)
-    risk = mapped_column(String, default="Moderate")
     check_size_usd = mapped_column(Integer, default=100000)
+    stage = mapped_column(String, default="Seed")
+    risk = mapped_column(String, default="Balanced")  # Conservative | Balanced | Aggressive
     excluded_sectors = mapped_column(JSON, default=list)
     active = mapped_column(Boolean, default=False)
+    sector = mapped_column(String, default="All Sectors")
+    geo = mapped_column(String, default="Global")
+    check_size = mapped_column(Integer, default=100000)
+    created_at = mapped_column(String, nullable=True)
+    ownership_target_pct = mapped_column(Float, default=10.0)
 
 
 class MemoRow(Base):
@@ -122,13 +155,16 @@ class MemoRow(Base):
 
 
 class AuditTrailRow(Base):
+    """Also serves the frontend's DecisionRecord (id → \"dec-{id}\")."""
     __tablename__ = "audit_trail"
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
     deal_id = mapped_column(String, index=True, nullable=False)
-    decision = mapped_column(String, nullable=False)
+    decision = mapped_column(String, nullable=False)  # DecisionKind literal from api.ts
     note = mapped_column(Text, nullable=False)
     conditions = mapped_column(Text, nullable=True)
     timestamp = mapped_column(String, nullable=False)
+    actor = mapped_column(String, default="Analyst")
+    analysis_label = mapped_column(String, default="")
 
 
 class OutreachDraftRow(Base):
@@ -136,5 +172,6 @@ class OutreachDraftRow(Base):
     id = mapped_column(Integer, primary_key=True, autoincrement=True)
     founder_id = mapped_column(String, index=True, nullable=False)
     deal_id = mapped_column(String, index=True, nullable=True)
-    draft_text = mapped_column(Text, nullable=False)
+    draft_text = mapped_column(Text, nullable=False)  # body
+    subject = mapped_column(Text, nullable=True)
     created_at = mapped_column(String, nullable=False)
