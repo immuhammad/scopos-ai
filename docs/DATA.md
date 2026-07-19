@@ -49,6 +49,14 @@ score on them is a genuine pipeline output.
 | Decision: `helix-runtime` **approve** | Simulated investment decision, audit trail, decided deals leave pending flow. |
 | Decision: `brickline` **decline** (note contradicts the read) | Feedback loop: note stored as an `investor_feedback` signal on the active thesis, injected into future scoring. |
 
+## Created by the e2e suite (not seeded)
+
+A full (non-`--fast`) run of `python -m tests.e2e_smoke` submits one live
+inbound application, `smokewalk-systems`, through the real two-tier pipeline;
+resubmitting it within 24 hours is blocked by the tier-1 duplicate guard at
+zero LLM cost. Fast runs also create throwaway non-viable junk deals that the
+pre-screen rejects — they never appear in dealflow.
+
 ## Not seeded on purpose
 
 - No fabricated "verified" claims — every status comes from the live checker.

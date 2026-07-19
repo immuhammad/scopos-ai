@@ -26,7 +26,8 @@ Diligence → Decision; FAQ #10 cold-start).
 |---|---|---|---|
 | Public application portal — minimal by design (company + founder + deck), everything else optional | `POST /applications` · `/apply` (public route) | Screening pillar; "for ANY founder" | live |
 | PDF deck + CV upload with server-side text extraction (pypdf → pdfminer fallback; a bad PDF never fails the application) | `POST /applications` (`deckFile`/`cvFile` base64) | Screening pillar | live |
-| Viability filter (genuine startup vs spam/joke) — non-viable stored, excluded from dealflow | pipeline step `filter` | Screening pillar | live |
+| Tier-1 deterministic pre-screen — zero-LLM sanity gate before ANY model call: company/founder name sanity, minimal-content volume, keyboard-mash spam heuristics, 24h duplicate guard (same company slug + lead-founder email); junk stored non-viable with a model-free `prescreen` trace, no founder records, no quota spent | pipeline step `prescreen` in `POST /applications` | Screening pillar; quota-safe two-tier screening | live |
+| Tier-2 LLM viability filter (genuine startup vs spam/joke) — runs only on applications that pass the free tier 1; non-viable stored, excluded from dealflow | pipeline step `filter` | Screening pillar | live |
 | Founder dedup — one human = one record (email → GitHub handle → LinkedIn) | pipeline + `matchedFounderIds` | Rule 6 | live |
 | Stepped pipeline-progress UI during the ~60–120s live run, then real per-step receipts | `/apply` | UX pillar | live |
 | NL search — one LLM parse into criteria, deterministic scorer, full objects with match % / why / missing | `POST /search` · dashboard search bar | Investment-utility pillar | live |
