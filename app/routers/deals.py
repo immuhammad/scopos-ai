@@ -10,15 +10,16 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.config import AUDIO_DIR
 from app.db import get_db
-from app.models import (AuditTrailRow, ClaimRow, DealFounderRow, DealRow, FounderRow,
-                        OutreachDraftRow, OutreachStateRow, PipelineTraceRow, SignalRow)
+from app.models import (AuditTrailRow, BriefingRow, ClaimRow, DealFounderRow, DealRow,
+                        FounderRow, OutreachDraftRow, OutreachStateRow, PipelineTraceRow,
+                        SignalRow)
 from app.services.assemble import (claim_to_contract, deal_to_contract, latest_axes,
                                    latest_memo)
 from app.services.briefing import generate_briefing, mp3_duration_sec
 from app.services.feedback import store_feedback
 from app.services.memo import fallback_memo, generate_memo
-from app.services.outreach import draft_outreach, signal_strength
-from app.services.pipeline import active_thesis
+from app.services.outreach import draft_outreach, lead_signal_breakdown, signal_strength
+from app.services.pipeline import active_thesis, run_intelligence
 from app.services.trace import record_trace
 
 router = APIRouter()
@@ -196,8 +197,29 @@ async def regenerate_memo(deal_id: str, db: Session = Depends(get_db)):
     return _memo_envelope(db, deal)
 
 
+@router.get("/deals/{deal_id}/briefing", response_model=schemas.BriefingV2)
+def get_briefing(deal_id: str, request: Request, db: Session = Depends(get_db)):
+    """Returns the EXISTING briefing if one was generated; 404 otherwise.
+    Audio persists on disk — the player survives refresh and navigation."""
+    _get_deal(db, deal_id)
+    row = db.get(BriefingRow, deal_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="no briefing generated yet")
+    url = None
+    if row.audio_path:
+        if not os.path.exists(os.path.join(AUDIO_DIR, os.path.basename(row.audio_path))):
+            raise HTTPException(status_code=404, detail="briefing audio missing from disk")
+        url = str(request.base_url).rstrip("/") + row.audio_path
+    return schemas.BriefingV2(
+        url=url, duration_sec=row.duration_sec or 0, generated_at=row.generated_at,
+        audio_url=row.audio_path, transcript=row.transcript or "",
+        chapters=[schemas.Chapter(title=c["title"], start_sec=c["startSec"])
+                  for c in (row.chapters or [])])
+
+
 @router.post("/deals/{deal_id}/briefing", response_model=schemas.BriefingV2)
 async def briefing(deal_id: str, request: Request, db: Session = Depends(get_db)):
+    """Always regenerates and replaces the stored briefing."""
     deal = _get_deal(db, deal_id)
     memo_row = latest_memo(db, deal.id)
     if memo_row is not None:
@@ -208,7 +230,6 @@ async def briefing(deal_id: str, request: Request, db: Session = Depends(get_db)
     errors = list(deal.errors or [])
     result = await generate_briefing(deal, memo, version, errors)
     deal.errors = errors
-    db.commit()
     base = str(request.base_url).rstrip("/")
     url = None
     duration = round(len(result["transcript"].split()) / 2.6, 1)
@@ -217,11 +238,65 @@ async def briefing(deal_id: str, request: Request, db: Session = Depends(get_db)
         duration = mp3_duration_sec(
             os.path.join(AUDIO_DIR, os.path.basename(result["audioUrl"])),
             result["transcript"])
+    row = db.get(BriefingRow, deal_id)
+    if row is None:
+        row = BriefingRow(deal_id=deal_id)
+        db.add(row)
+    row.audio_path = result["audioUrl"]
+    row.duration_sec = duration
+    row.transcript = result["transcript"]
+    row.chapters = result["chapters"]
+    row.generated_at = _now_iso()
+    db.commit()
     return schemas.BriefingV2(
-        url=url, duration_sec=duration, generated_at=_now_iso(),
+        url=url, duration_sec=duration, generated_at=row.generated_at,
         audio_url=result["audioUrl"], transcript=result["transcript"],
         chapters=[schemas.Chapter(title=c["title"], start_sec=c["startSec"])
                   for c in result["chapters"]])
+
+
+@router.post("/deals/{deal_id}/simulate-application", response_model=schemas.Deal)
+async def simulate_application(deal_id: str, db: Session = Depends(get_db)):
+    """DEMO convergence: constructs an application from the lead's REAL public
+    footprint (post text, repos) and runs the FULL inbound pipeline on the same
+    deal + founder. Clearly labeled simulated — no real founder response exists."""
+    deal = _get_deal(db, deal_id)
+    if deal.pipeline_stage not in ("Sourced", "Invited"):
+        raise HTTPException(status_code=400, detail="only outbound leads can simulate an application")
+    links = db.execute(select(DealFounderRow).where(
+        DealFounderRow.deal_id == deal_id)).scalars().all()
+    founders = [db.get(FounderRow, l.founder_id) for l in links]
+    founders = [f for f in founders if f is not None]
+
+    parts = ["Company: {}".format(deal.company),
+             "Tagline: {}".format(deal.tagline or "Not disclosed"),
+             "Pitch deck: not provided",
+             "Founders: " + "; ".join("{} ({})".format(f.name, f.role) for f in founders)]
+    for s in db.execute(select(SignalRow).where(
+            SignalRow.deal_id == deal_id)).scalars().all():
+        raw = s.raw_json or {}
+        if s.signal_type == "hn_post":
+            parts.append("Show HN post ({} points): {}".format(raw.get("points", 0), raw.get("title", "")))
+            if raw.get("story_text"):
+                parts.append(raw["story_text"][:3000])
+        elif s.signal_type == "github_repo_trending":
+            parts.append("Trending repo '{}' ({} stars): {}".format(
+                raw.get("title"), raw.get("stars"), raw.get("description") or ""))
+        elif s.signal_type == "github_profile":
+            for r in (raw.get("top_repos") or [])[:3]:
+                parts.append("Public repo {}: {} ({} stars).".format(
+                    r.get("name"), r.get("description") or "no description", r.get("stars", 0)))
+    app_text = "\n".join(parts)
+
+    record_trace(db, deal_id, "simulated-application", "",
+                 "DEMO: simulated application received — constructed from the lead's real public footprint; no real founder response")
+    for f in founders:
+        f.contact_status = "Applied"
+    errors: list = []
+    await run_intelligence(db, deal, founders, app_text, None, None, errors)
+    deal.next_action = "Simulated application (demo) — review three-axis scorecard."
+    db.commit()
+    return deal_to_contract(db, deal)
 
 
 # ---- outreach: drafts + SIMULATED sends only; nothing leaves the system ----
@@ -261,7 +336,7 @@ async def outreach_draft(deal_id: str, db: Session = Depends(get_db)):
             made = {"subject": "Quick note on {} — from an early-stage fund".format(deal.company),
                     "body": ("Hi {},\n\nWe came across {} in our outbound scan — {} "
                              "We'd love a 20-minute intro and can send a short "
-                             "application link either way.\n\n— VC Brain, draft").format(
+                             "application link either way.\n\n— Scopos, draft").format(
                                  first, deal.company, deal.tagline)}
             db.add(OutreachDraftRow(founder_id=founder_id or "unknown", deal_id=deal_id,
                                     draft_text=made["body"], subject=made["subject"],
@@ -269,10 +344,14 @@ async def outreach_draft(deal_id: str, db: Session = Depends(get_db)):
         db.commit()
         row = _latest_draft(db, deal_id)
     axes = latest_axes(db, deal.id)
-    fa = axes.founder_axis if axes else {"score": 50}
-    iv_trend = (axes.idea_vs_market or {}).get("trend", "flat") if axes else "flat"
-    mk_rating = (axes.market or {}).get("rating", "Neutral") if axes else "Neutral"
-    strength = signal_strength(db, deal, fa, iv_trend, mk_rating)
+    if axes is None:
+        # LEAD: strength derives purely from the real public footprint
+        strength = lead_signal_breakdown(db, deal)
+    else:
+        fa = axes.founder_axis
+        iv_trend = (axes.idea_vs_market or {}).get("trend", "flat")
+        mk_rating = (axes.market or {}).get("rating", "Neutral")
+        strength = signal_strength(db, deal, fa, iv_trend, mk_rating)
     return schemas.OutreachDraft(
         subject=row.subject or "Quick note on {}".format(deal.company),
         body=row.draft_text,

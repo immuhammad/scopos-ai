@@ -1,24 +1,29 @@
 """Outbound sourcing via Hacker News Algolia (Show HN + Launch HN, last 30d).
-Discovered founders enter the SAME pipeline as inbound applicants — one funnel.
-Messages are never sent: outreach lands as editable drafts only."""
+
+Scans create LEADS, not decision-ready deals: a real founder record, real
+signals (the actual post, points, links), a Sourced-stage deal with NO claims,
+NO axis scores, NO memo — just a signal-strength read and an outreach draft.
+Convergence to the inbound pipeline happens only when an application arrives
+(or is explicitly simulated for demo). Messages are never actually sent."""
 import re
 import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import FounderRow, SignalRow
-from app.schemas import ApplicationFounder, ApplicationPayload
+from app.models import DealFounderRow, DealRow, FounderRow, SignalRow
+from app.services.founder_score import recompute_founder_score
+from app.services.github_enrich import enrich_github, handle_from_url
 from app.services.outreach import draft_outreach
-from app.services.pipeline import active_thesis, find_founder, process_application
+from app.services.pipeline import active_thesis, find_founder
 from app.services.slugs import unique_slug
+from app.services.trace import record_trace
 
 ALGOLIA = "https://hn.algolia.com/api/v1/search_by_date"
 GITHUB_RE = re.compile(r"https?://github\.com/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?")
-URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 
 
 def _now_iso() -> str:
@@ -28,7 +33,7 @@ def _now_iso() -> str:
 def _company_from_title(title: str) -> str:
     t = re.sub(r"^(Show|Launch) HN:?\s*", "", title or "", flags=re.I).strip()
     t = re.split(r"\s+[–—-]\s+|:\s+", t)[0].strip()
-    return (t or title or "Untitled HN project")[:60]
+    return (t or "").strip()[:60]
 
 
 async def _fetch_posts(limit: int = 40) -> List[Dict]:
@@ -69,13 +74,16 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
         posts = await _fetch_posts()
     except Exception as exc:  # noqa: BLE001 — network failure must not 500
         return {"newSignals": 0, "newFounders": 0, "newDeals": 0, "skipped": 0,
-                "errors": ["HN Algolia unreachable: {}".format(exc)]}
+                "errors": ["HN Algolia unreachable: {}".format(exc)],
+                "dealIds": [], "founderIds": [], "signalIds": []}
 
     new_signals = new_founders = new_deals = skipped = 0
-    processed = 0
+    leads_created = 0
     created_deal_ids: List[str] = []
     created_founder_ids: List[str] = []
     created_signal_ids: List[int] = []
+    now = _now_iso()
+
     for post in posts:
         story_id = str(post.get("objectID"))
         if _already_ingested(db, story_id):
@@ -86,6 +94,10 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
         text = post.get("story_text") or ""
         url = post.get("url")
         points = post.get("points") or 0
+        company = _company_from_title(title)
+        if not company or company.lower() in ("show hn", "launch hn"):
+            skipped += 1  # unparseable title — not a usable lead
+            continue
         email = "{}@hn.invalid".format(author.lower())  # synthetic dedup key, clearly not a real address
 
         founder = find_founder(db, email)
@@ -96,45 +108,71 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
                 founder_score=0, score_trend="flat", components=[], history=[],
                 contact_status="Discovered", contradiction_count=0,
                 bio="Discovered via Show HN. Email not disclosed — synthetic handle key.",
-                created_at=_now_iso())
+                created_at=now)
             db.add(founder)
             db.flush()
             created_founder_ids.append(founder.id)
             new_founders += 1
-        db.add(SignalRow(founder_id=founder.id, source="Show HN", signal_type="hn_post",
-                         raw_json={"story_id": story_id, "title": title, "points": points,
-                                   "url": url, "author": author,
-                                   "text": "Show HN by '{}' — {} ({} pts)".format(author, title, points)},
-                         fetched_at=_now_iso()))
+
+        sig = SignalRow(founder_id=founder.id, source="Show HN", signal_type="hn_post",
+                        raw_json={"story_id": story_id, "title": title, "points": points,
+                                  "url": url, "author": author,
+                                  "item_url": "https://news.ycombinator.com/item?id={}".format(story_id),
+                                  "text": "Show HN by '{}' — {} ({} pts)".format(author, title, points),
+                                  "story_text": text[:4000]},
+                        fetched_at=now)
+        db.add(sig)
         db.flush()
-        last_sig = db.execute(select(SignalRow).order_by(SignalRow.id.desc())).scalars().first()
-        if last_sig is not None:
-            created_signal_ids.append(last_sig.id)
+        created_signal_ids.append(sig.id)
         new_signals += 1
 
-        if processed >= process_limit:
-            skipped += 1  # signal stored; full pipeline deferred to keep the run bounded
+        if leads_created >= process_limit:
+            skipped += 1  # signal stored; lead creation deferred to keep the run bounded
             continue
-        processed += 1
+        leads_created += 1
 
+        # LEAD deal: Sourced stage, real links only — no claims, no axes, no memo.
         gh_links = GITHUB_RE.findall(text or "") + ([url] if url and "github.com" in url else [])
-        links = [u for u in ([url] if url else []) + URL_RE.findall(text or "")][:5]
-        payload = ApplicationPayload(
-            company=_company_from_title(title), tagline=title,
+        deal_id = unique_slug(db, DealRow, company)
+        links = [{"label": "Show HN post",
+                  "href": "https://news.ycombinator.com/item?id={}".format(story_id)}]
+        if url:
+            links.append({"label": _link_label(url), "href": url})
+        if gh_links and not any("github.com" in (l["href"] or "") for l in links):
+            links.append({"label": "GitHub", "href": gh_links[0]})
+        deal = DealRow(
+            id=deal_id, company=company, tagline=title,
             sector="Not disclosed", stage="Pre-Seed", geography="Not disclosed",
-            founders=[ApplicationFounder(name=author, role="Other", email=email,
-                                         github=gh_links[0] if gh_links else None)],
-            links=links, has_deck=False)
-        deal, _, _, errs = await process_application(
-            db, payload, source="Outbound — Show HN", new_contact_status="Reviewing")
-        errors.extend(errs)
-        created_deal_ids.append(deal.id)
+            source="Outbound — Show HN", pipeline_stage="Sourced",
+            stage_started_at=now, first_signal_at=now,
+            next_action="Review lead footprint and send outreach.",
+            links=links, created_at=now,
+            decision_deadline=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+            errors=[])
+        db.add(deal)
+        db.add(DealFounderRow(deal_id=deal_id, founder_id=founder.id, lead=True,
+                              role=founder.role))
+        sig.deal_id = deal_id
+        db.flush()
+        created_deal_ids.append(deal_id)
         new_deals += 1
-        draft = await draft_outreach(
-            db, founder.id, deal.id,
+
+        if founder.github is None and gh_links:
+            founder.github = gh_links[0]
+        handle = handle_from_url(founder.github)
+        if handle:
+            data = await enrich_github(handle)
+            if data is not None:
+                db.add(SignalRow(founder_id=founder.id, deal_id=deal_id, source="GitHub API",
+                                 signal_type="github_profile", raw_json=data, fetched_at=now))
+                db.flush()
+        recompute_founder_score(db, founder, "Discovered via Show HN: {}".format(company))
+        record_trace(db, deal_id, "lead-created", "",
+                     "Outbound lead from real Show HN post ({} pts) — no claims/axes until an application arrives".format(points))
+        await draft_outreach(
+            db, founder.id, deal_id,
             "Show HN post: {} ({} points). {}".format(title, points, text[:800]),
             active_thesis(db), errors)
-        founder.contact_status = "Reviewing" if draft else founder.contact_status
         db.commit()
 
     db.commit()
@@ -142,3 +180,12 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
             "newDeals": new_deals, "skipped": skipped, "errors": errors,
             "dealIds": created_deal_ids, "founderIds": created_founder_ids,
             "signalIds": created_signal_ids}
+
+
+def _link_label(url: str) -> str:
+    low = url.lower()
+    if "github.com" in low:
+        return "GitHub"
+    if "news.ycombinator" in low:
+        return "Show HN post"
+    return "Website"

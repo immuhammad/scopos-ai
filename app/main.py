@@ -9,7 +9,11 @@ from app.db import init_db
 from app.routers import deals, founders, misc
 from app.schemas import HealthResponse
 
-app = FastAPI(title="VC Brain API", version="1.0.0")
+app = FastAPI(
+    title="Scopos API",
+    description="AI-first VC operating system — sourcing, screening, diligence, decision.",
+    version="2.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,

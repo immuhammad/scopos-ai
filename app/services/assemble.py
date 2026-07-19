@@ -50,7 +50,8 @@ def claim_to_contract(c: ClaimRow) -> schemas.Claim:
         collected_at=c.collected_at, verified_at=c.verified_at,
         conflicting_evidence=c.conflicting_evidence,
         ai_explanation=c.ai_explanation or "",
-        review_notes=list(c.review_notes or []))
+        review_notes=list(c.review_notes or []),
+        source_quote=c.source_quote, artifact=c.artifact)
 
 
 def deal_to_contract(db: Session, deal: DealRow) -> schemas.Deal:

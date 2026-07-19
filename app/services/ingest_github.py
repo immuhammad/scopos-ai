@@ -1,5 +1,7 @@
-"""Outbound sourcing via GitHub repo search (created <30d, >50 stars). Repo
-owners run through the SAME intake pipeline — one funnel, drafts only."""
+"""Outbound sourcing via GitHub repo search (created <30d, >50 stars).
+
+Scans create LEADS: real owner record + real repo signals + a Sourced-stage
+deal with no claims/axes/memo. Same funnel, activated only on application."""
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
@@ -8,11 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import GITHUB_TOKEN
-from app.models import FounderRow, SignalRow
-from app.schemas import ApplicationFounder, ApplicationPayload
+from app.models import DealFounderRow, DealRow, FounderRow, SignalRow
+from app.services.founder_score import recompute_founder_score
+from app.services.github_enrich import enrich_github
 from app.services.outreach import draft_outreach
-from app.services.pipeline import active_thesis, find_founder, process_application
+from app.services.pipeline import active_thesis, find_founder
 from app.services.slugs import unique_slug
+from app.services.trace import record_trace
 
 
 def _now_iso() -> str:
@@ -42,19 +46,25 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
             repos = resp.json().get("items", [])
     except Exception as exc:  # noqa: BLE001 — network failure must not 500
         return {"newSignals": 0, "newFounders": 0, "newDeals": 0, "skipped": 0,
-                "errors": ["GitHub search unreachable: {}".format(exc)]}
+                "errors": ["GitHub search unreachable: {}".format(exc)],
+                "dealIds": [], "founderIds": [], "signalIds": []}
 
     new_signals = new_founders = new_deals = skipped = 0
-    processed = 0
+    leads_created = 0
     created_deal_ids: List[str] = []
     created_founder_ids: List[str] = []
     created_signal_ids: List[int] = []
+    now = _now_iso()
+
     for repo in repos:
         repo_id = repo.get("id")
         if _already_ingested(db, repo_id):
             skipped += 1
             continue
         owner = (repo.get("owner") or {}).get("login") or "unknown"
+        if (repo.get("owner") or {}).get("type") == "Organization":
+            skipped += 1  # orgs aren't founder leads
+            continue
         name = repo.get("name") or "untitled"
         desc = repo.get("description") or ""
         stars = repo.get("stargazers_count", 0)
@@ -70,45 +80,60 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
                 score_trend="flat", components=[], history=[],
                 contact_status="Discovered", contradiction_count=0,
                 bio="Discovered via trending GitHub repo. Email not disclosed.",
-                created_at=_now_iso())
+                created_at=now)
             db.add(founder)
             db.flush()
             created_founder_ids.append(founder.id)
             new_founders += 1
-        db.add(SignalRow(founder_id=founder.id, source="GitHub",
-                         signal_type="github_repo_trending",
-                         raw_json={"repo_id": repo_id, "title": name, "stars": stars,
-                                   "url": html_url,
-                                   "text": "Repo '{}' trending — {} stars in <30d".format(name, stars)},
-                         fetched_at=_now_iso()))
+
+        sig = SignalRow(founder_id=founder.id, source="GitHub",
+                        signal_type="github_repo_trending",
+                        raw_json={"repo_id": repo_id, "title": name, "stars": stars,
+                                  "url": html_url,
+                                  "description": desc[:400],
+                                  "text": "Repo '{}' trending — {} stars in <30d".format(name, stars)},
+                        fetched_at=now)
+        db.add(sig)
         db.flush()
-        last_sig = db.execute(select(SignalRow).order_by(SignalRow.id.desc())).scalars().first()
-        if last_sig is not None:
-            created_signal_ids.append(last_sig.id)
+        created_signal_ids.append(sig.id)
         new_signals += 1
 
-        if processed >= process_limit:
+        if leads_created >= process_limit:
             skipped += 1
             continue
-        processed += 1
+        leads_created += 1
 
-        payload = ApplicationPayload(
-            company=name[:60], tagline=desc[:200] or "Open-source project '{}'".format(name),
+        deal_id = unique_slug(db, DealRow, name)
+        deal = DealRow(
+            id=deal_id, company=name[:60],
+            tagline=desc[:200] or "Open-source project '{}'".format(name),
             sector="Not disclosed", stage="Pre-Seed", geography="Not disclosed",
-            founders=[ApplicationFounder(name=owner, role="Other", email=email,
-                                         github="https://github.com/{}".format(owner))],
-            links=[html_url] if html_url else [], has_deck=False)
-        deal, _, _, errs = await process_application(
-            db, payload, source="Outbound Discovery via GitHub",
-            new_contact_status="Reviewing")
-        errors.extend(errs)
-        created_deal_ids.append(deal.id)
+            source="Outbound Discovery via GitHub", pipeline_stage="Sourced",
+            stage_started_at=now, first_signal_at=now,
+            next_action="Review lead footprint and send outreach.",
+            links=[{"label": "GitHub", "href": html_url}], created_at=now,
+            decision_deadline=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+            errors=[])
+        db.add(deal)
+        db.add(DealFounderRow(deal_id=deal_id, founder_id=founder.id, lead=True,
+                              role=founder.role))
+        sig.deal_id = deal_id
+        db.flush()
+        created_deal_ids.append(deal_id)
         new_deals += 1
-        draft = await draft_outreach(
-            db, founder.id, deal.id,
+
+        data = await enrich_github(owner)
+        if data is not None:
+            db.add(SignalRow(founder_id=founder.id, deal_id=deal_id, source="GitHub API",
+                             signal_type="github_profile", raw_json=data, fetched_at=now))
+            db.flush()
+        recompute_founder_score(db, founder, "Discovered via trending repo: {}".format(name))
+        record_trace(db, deal_id, "lead-created", "",
+                     "Outbound lead from real trending repo ({} stars) — no claims/axes until an application arrives".format(stars))
+        await draft_outreach(
+            db, founder.id, deal_id,
             "GitHub repo '{}' ({} stars in under 30 days): {}".format(name, stars, desc),
             active_thesis(db), errors)
-        founder.contact_status = "Reviewing" if draft else founder.contact_status
         db.commit()
 
     db.commit()
