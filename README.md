@@ -21,12 +21,18 @@ Hack-Nation 6th Global AI Hackathon · Challenge 02 · Maschmeyer Group × MIT C
 
 ## 🎬 Demo
 
+<p align="center">
+  <img src="docs/media/triage-swipe-1.gif" width="270" alt="Mobile triage — swiping from a cold-start deal to a strong deal" />
+  &nbsp;&nbsp;
+  <img src="docs/media/triage-swipe-2.gif" width="270" alt="Mobile triage — swiping from a strong deal back to a cold-start deal" />
+</p>
+
+<p align="center"><em>The mobile-first <code>/triage</code> swipe flow between a <strong>cold-start</strong> deal (wider uncertainty, still first-class) and a strong deal — three independent axes, thesis match, and a concrete next action on every card. Source clips: <a href="docs/media/triage-swipe-1.mp4"><code>triage-swipe-1.mp4</code></a> · <a href="docs/media/triage-swipe-2.mp4"><code>triage-swipe-2.mp4</code></a>.</em></p>
+
 | | |
 |---|---|
-| 📱 **Mobile triage preview — clip 1** | [`docs/media/triage-swipe-1.mp4`](docs/media/triage-swipe-1.mp4) — the mobile-first `/triage` swipe card on a strong deal: three independent axes, thesis match, next action (repo mp4s are click-to-play on GitHub) |
-| 📱 **Mobile triage preview — clip 2** | [`docs/media/triage-swipe-2.mp4`](docs/media/triage-swipe-2.mp4) — the same swipe card on a **cold-start** deal: wider uncertainty, lower thesis fit, still first-class |
-| 📺 **Product walkthrough video** | 🚧 *Coming soon — drop `demo-walkthrough.mp4` into `docs/media/` (or attach via the GitHub editor so it embeds inline)* |
-| 🖥️ **Live link** | 🚧 *Coming soon — one-click backend deploy via [`render.yaml`](render.yaml), then set `VITE_API_BASE_URL` in Lovable (steps in [Deploy](#-deploy-live-link))* |
+| 📺 **Product walkthrough video** | 🚧 *Coming soon — drag the mp4 into the README via the GitHub **web editor** so it embeds as an inline player (repo-committed mp4s only render as links, which is why the previews above are GIFs)* |
+| 🖥️ **Live link** | **https://scopos-ai.vercel.app** — frontend on Vercel, API on Render ([health](https://scopos-api.onrender.com/health)); free tiers sleep, so the first load can take ~60s while the backend wakes |
 
 ## 📸 Screenshots
 
@@ -132,9 +138,13 @@ cd frontend && npm i && npm run dev
 
 ## ☁️ Deploy (live link)
 
-1. **Backend → Render**: New Blueprint Instance → point at this repo ([`render.yaml`](render.yaml)) → fill the 4 keys → deploy → open the service Shell and run `python -m app.seed.demo`. Free tier sleeps — hit `/health` ~2 min before demos.
-2. **Frontend → Lovable**: set `VITE_API_BASE_URL` to the Render URL and add that origin to `CORS_ORIGINS`; the published app is at `https://venture-mind-os.lovable.app`.
-3. Paste the live URL here. 🚧 *Live link: coming soon.*
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/immuhammad/scopos-ai)
+
+**Live now**: app → **https://scopos-ai.vercel.app** · API → **https://scopos-api.onrender.com** ([`/health`](https://scopos-api.onrender.com/health)). Both free tiers sleep — hit the API `/health` ~2 min before demos; the first wake takes 30–60s.
+
+1. **Backend → Render**: click the button above (blueprint = [`render.yaml`](render.yaml)) → fill the 4 keys → deploy. The seeded `vcbrain.db` ships in the repo, so the service boots with the full demo dataset — no shell/seed step. Live writes reset to the committed snapshot on each redeploy.
+2. **Frontend → Vercel**: import this repo → set **Root Directory = `frontend`** → add env vars `VITE_API_BASE_URL = https://scopos-api.onrender.com` (**no trailing slash** — it produces `//`-prefixed API paths that 404) and `NITRO_PRESET = vercel` (Lovable's build config otherwise targets Cloudflare) → deploy. The Vercel origin must be listed in the backend's `CORS_ORIGINS` (already in `render.yaml`).
+3. **Instant no-account fallback** for a live call: `brew install cloudflared && cloudflared tunnel --url http://127.0.0.1:8000` exposes the local backend in seconds (`ngrok http 8000` works too).
 
 ## 🚧 Coming soon
 

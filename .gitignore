@@ -1,5 +1,8 @@
 .env
 *.db
+# exception: the seeded demo dataset ships with the repo so deploys boot with data
+# (Render free tier has no shell to run the seeder)
+!vcbrain.db
 __pycache__/
 .venv/
 audio/
