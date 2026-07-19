@@ -46,6 +46,8 @@ class Claim(CamelModel):
     conflicting_evidence: Optional[str] = None
     ai_explanation: str
     review_notes: Optional[List[str]] = None
+    source_quote: Optional[str] = None  # quote-anchored: the exact sentence the claim came from
+    artifact: Optional[str] = None      # which artifact the conflicting quote came from
 
 
 class FounderComponent(CamelModel):
