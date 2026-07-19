@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, type TraceItem } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { UploadCloud, FileText, X, CheckCircle2, Plus, Users, UserPlus, FileUser, Video, Loader2, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,11 @@ function makeFounder(role = "CEO"): CofounderForm {
 
 function Apply() {
   const navigate = useNavigate();
+  const { ready, signedIn } = useAuth();
+  // The founder portal is public-only; signed-in partners belong in the dashboard.
+  useEffect(() => {
+    if (ready && signedIn) navigate({ to: "/command" });
+  }, [ready, signedIn, navigate]);
   const [company, setCompany] = useState("");
   const [tagline, setTagline] = useState("");
   const [founders, setFounders] = useState<CofounderForm[]>([makeFounder("CEO")]);

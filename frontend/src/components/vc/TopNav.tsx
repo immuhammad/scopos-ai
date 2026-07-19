@@ -21,7 +21,8 @@ export function TopNav() {
   const { signedIn, signOut } = useAuth();
   const thesisQ = useQuery({ queryKey: ["activeThesis"], queryFn: () => api.getActiveThesis(), enabled: signedIn });
   const t = thesisQ.data;
-  const links = [...(signedIn ? protectedLinks : []), { to: "/apply", label: "Apply" } as const];
+  // Apply is the PUBLIC founder portal — visible only when logged out.
+  const links = signedIn ? [...protectedLinks] : [{ to: "/apply", label: "Apply" } as const];
   const isActive = (to: string) => (to === "/founders" ? pathname.startsWith("/founders") : pathname === to);
   const doSignOut = () => {
     signOut();

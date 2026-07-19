@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TopNav } from "@/components/vc/TopNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,12 @@ export const Route = createFileRoute("/")({
 
 function SignIn() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { ready, signedIn, signIn } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  // Already signed in → the landing page is not for you; go to the dashboard.
+  useEffect(() => {
+    if (ready && signedIn) navigate({ to: "/command" });
+  }, [ready, signedIn, navigate]);
   const [email, setEmail] = useState("partner@northwave.vc");
   const [password, setPassword] = useState("••••••••••");
 
