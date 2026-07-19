@@ -37,6 +37,17 @@ class PipelineTraceRow(Base):
     created_at = mapped_column(String, nullable=False)
 
 
+class BriefingRow(Base):
+    """Persisted audio briefing metadata — the mp3 lives on disk under /audio."""
+    __tablename__ = "briefings"
+    deal_id = mapped_column(String, primary_key=True)
+    audio_path = mapped_column(String, nullable=True)   # relative /audio/... or null when TTS degraded
+    duration_sec = mapped_column(Float, default=0.0)
+    transcript = mapped_column(Text, default="")
+    chapters = mapped_column(JSON, default=list)
+    generated_at = mapped_column(String, nullable=False)
+
+
 class OutreachStateRow(Base):
     """Simulated-only outreach: nothing is ever actually sent."""
     __tablename__ = "outreach_states"

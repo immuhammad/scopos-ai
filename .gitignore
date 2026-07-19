@@ -4,3 +4,11 @@ __pycache__/
 .venv/
 audio/
 *.log
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+frontend/.tanstack/
+frontend/.nitro/
+frontend/.output/
+frontend/.vinxi/

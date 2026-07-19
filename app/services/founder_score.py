@@ -86,7 +86,7 @@ def recompute_founder_score(db: Session, founder: FounderRow, event: str,
 
     history = list(founder.history or [])
     history.append({"date": _today(), "event": event,
-                    "source": "VC Brain pipeline", "delta": delta})
+                    "source": "Scopos pipeline", "delta": delta})
     founder.history = history
     founder.components = components
     founder.founder_score = score

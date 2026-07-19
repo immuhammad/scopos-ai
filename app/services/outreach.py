@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import MODEL_MINI
 from app.llm import OutreachLLM, safe_parse
 from app.models import (ClaimRow, DealFounderRow, DealRow, FounderRow,
-                        OutreachDraftRow, ThesisRow)
+                        OutreachDraftRow, SignalRow, ThesisRow)
 
 
 async def draft_outreach(db: Session, founder_id: str, deal_id: str,
@@ -33,6 +33,55 @@ async def draft_outreach(db: Session, founder_id: str, deal_id: str,
                             draft_text=res.body, subject=res.subject,
                             created_at=datetime.now(timezone.utc).isoformat()))
     return {"subject": res.subject, "body": res.body}
+
+
+def lead_signal_breakdown(db: Session, deal: DealRow) -> Dict:
+    """Signal strength for an outbound LEAD — derived entirely from the real
+    public footprint (HN points, repo stars, shipping cadence, account age).
+    No axes exist yet; nothing here is fabricated."""
+    from datetime import datetime, timezone
+    links = db.execute(select(DealFounderRow).where(DealFounderRow.deal_id == deal.id)).scalars().all()
+    founders = [db.get(FounderRow, l.founder_id) for l in links]
+    founders = [f for f in founders if f is not None]
+    hn_points = stars = recent_repos = 0
+    years = 0.0
+    for f in founders:
+        for s in db.execute(select(SignalRow).where(SignalRow.founder_id == f.id)).scalars().all():
+            raw = s.raw_json or {}
+            if s.signal_type == "hn_post":
+                hn_points = max(hn_points, raw.get("points", 0))
+            elif s.signal_type == "github_repo_trending":
+                stars = max(stars, raw.get("stars", 0))
+            elif s.signal_type == "github_profile":
+                stars = max(stars, raw.get("total_stars", 0))
+                repos = raw.get("top_repos") or []
+                recent_repos = max(recent_repos, sum(
+                    1 for r in repos if (r.get("pushed_at") or "") >= "2026-04"))
+                created = raw.get("created_at") or ""
+                try:
+                    years = max(years, (datetime.now(timezone.utc) - datetime.strptime(
+                        created[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)).days / 365.0)
+                except ValueError:
+                    pass
+    community = min(30, round(hn_points * 0.08 + stars * 0.004))
+    shipping = min(15, recent_repos * 4)
+    age = min(10, round(years * 1.5))
+    fs = max([f.founder_score or 0 for f in founders], default=0)
+    fs_pts = round(fs * 0.25)
+    baseline = 15
+    total = max(10, min(100, community + shipping + age + fs_pts + baseline))
+    breakdown = [
+        {"label": "Community traction",
+         "detail": "{} HN points · {} GitHub stars".format(hn_points, stars), "points": community},
+        {"label": "Shipping consistency",
+         "detail": "{} repo(s) pushed in the last 90 days".format(recent_repos), "points": shipping},
+        {"label": "Account age",
+         "detail": "{:.1f} years on GitHub".format(years) if years else "Not disclosed", "points": age},
+        {"label": "Founder Score",
+         "detail": "{} — one persistent per-person input".format(fs), "points": fs_pts},
+        {"label": "Baseline outbound interest", "detail": deal.source, "points": baseline},
+    ]
+    return {"strength": total, "breakdown": breakdown}
 
 
 _MARKET_SCORE = {"Bullish": 82, "Neutral": 60, "Bear": 40}
