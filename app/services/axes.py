@@ -32,10 +32,12 @@ def _trend(new: int, old: Optional[int]) -> str:
 def _thesis_text(thesis: Optional[ThesisRow]) -> str:
     if thesis is None:
         return "No active investment thesis."
-    return ("Active thesis '{}': sectors {}, stage {}, geography {}, risk {}, "
-            "check size ${}, excluded sectors {}.").format(
-        thesis.name, thesis.sectors, thesis.stage, thesis.geography,
-        thesis.risk, thesis.check_size_usd, thesis.excluded_sectors)
+    return ("Active thesis '{}': sector {}, stage {}, geography {}, risk {}, "
+            "check size ${}, ownership target {}%, excluded sectors {}.").format(
+        thesis.name, thesis.sector or thesis.sectors, thesis.stage,
+        thesis.geo or thesis.geography, thesis.risk,
+        thesis.check_size or thesis.check_size_usd,
+        thesis.ownership_target_pct, thesis.excluded_sectors)
 
 
 def _founder_profiles(founders: List[FounderRow]) -> str:
@@ -52,7 +54,8 @@ def _founder_profiles(founders: List[FounderRow]) -> str:
 async def assess_axes(db: Session, deal: DealRow, founders: List[FounderRow],
                       claims_text: str, evidence_text: str,
                       thesis: Optional[ThesisRow], errors: List[str],
-                      cold_start_note: Optional[str] = None
+                      cold_start_note: Optional[str] = None,
+                      extra_context: str = ""
                       ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], List[Dict[str, Any]]]:
     prev = db.execute(
         select(AxisAssessmentRow).where(AxisAssessmentRow.deal_id == deal.id)
@@ -61,9 +64,9 @@ async def assess_axes(db: Session, deal: DealRow, founders: List[FounderRow],
 
     common = (
         "DEAL: {} — {} | sector {} | stage {} | geography {}\n"
-        "{}\n\nFOUNDER TEAM:\n{}\n\nCLAIMS (with trust status):\n{}\n\nEVIDENCE / SIGNALS:\n{}"
+        "{}{}\n\nFOUNDER TEAM:\n{}\n\nCLAIMS (with trust status):\n{}\n\nEVIDENCE / SIGNALS:\n{}"
     ).format(deal.company, deal.tagline, deal.sector, deal.stage, deal.geography,
-             _thesis_text(thesis), _founder_profiles(founders),
+             _thesis_text(thesis), extra_context, _founder_profiles(founders),
              claims_text[:4000], evidence_text[:4000])
 
     guard = ("Ground every judgment in the evidence quoted above. If evidence is thin, "

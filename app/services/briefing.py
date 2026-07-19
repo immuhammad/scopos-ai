@@ -50,6 +50,24 @@ async def _tts(text: str, out_path: str) -> bool:
         return False
 
 
+def mp3_duration_sec(path: str, transcript: str) -> float:
+    """mutagen → ffprobe → word-count estimate."""
+    try:
+        from mutagen.mp3 import MP3
+        return round(float(MP3(path).info.length), 1)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=10)
+        return round(float(out.stdout.strip()), 1)
+    except Exception:  # noqa: BLE001
+        return round(len(transcript.split()) / WORDS_PER_SEC, 1)
+
+
 async def generate_briefing(deal: DealRow, memo: Dict[str, Any], version: int,
                             errors: List[str]) -> Dict[str, Any]:
     res, err = await safe_parse(

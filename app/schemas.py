@@ -141,6 +141,10 @@ class AuditEntry(CamelModel):
     timestamp: str
 
 
+DecisionKind = Literal["approve", "approve_conditions", "continue_diligence", "decline"]
+ThesisRisk = Literal["Conservative", "Balanced", "Aggressive"]
+
+
 class Deal(CamelModel):
     id: str
     company: str
@@ -169,6 +173,9 @@ class Deal(CamelModel):
     starred: Optional[bool] = None
     audit_trail: Optional[List[AuditEntry]] = None  # additive
     errors: Optional[List[str]] = None              # additive: degraded-pipeline notes
+    first_signal_at: Optional[str] = None           # additive: speed instrumentation
+    decided_at: Optional[str] = None
+    signal_to_decision_hours: Optional[float] = None
 
 
 class SourcingItem(CamelModel):
@@ -209,7 +216,13 @@ class ApplicationPayload(CamelModel):
     founders: List[ApplicationFounder]
     links: List[str] = Field(default_factory=list)
     has_deck: bool = False
+    has_cv: Optional[bool] = None
     cv_text: Optional[str] = None
+    deck_text: Optional[str] = None
+    deck_file: Optional[str] = None  # base64 PDF — text extracted server-side
+    cv_file: Optional[str] = None    # base64 PDF
+    ask_usd: Optional[int] = None    # funding sought; "Not disclosed" when absent
+    video_pitch: Optional[str] = None
     video_pitch_url: Optional[str] = None
 
 
@@ -252,6 +265,7 @@ class SearchPayload(CamelModel):
 class ApplicationResponse(CamelModel):
     deal_id: str
     matched_founder_ids: List[str]
+    new_founder_ids: List[str] = Field(default_factory=list)
     deal: Optional[Deal] = None  # None when filtered as non-viable
     viable: bool = True
     errors: List[str] = Field(default_factory=list)
@@ -293,6 +307,170 @@ class IngestResponse(CamelModel):
     new_deals: int
     skipped: int = 0
     errors: List[str] = Field(default_factory=list)
+
+
+# ---- v2 surfaces conforming to the evolved frontend api.ts ----
+
+class DecisionRecord(CamelModel):
+    id: str
+    deal_id: str
+    kind: DecisionKind
+    note: str
+    conditions: Optional[str] = None
+    timestamp: str
+    analysis_label: str
+    actor: str
+
+
+class DecideV2Payload(CamelModel):
+    decision: DecisionKind
+    note: str = Field(min_length=1)
+    conditions: Optional[str] = None
+    actor: Optional[str] = None
+
+
+class StagePayload(CamelModel):
+    stage: PipelineStage
+    next_action: Optional[str] = None
+
+
+class MemoEnvelope(CamelModel):
+    memo: Memo
+    generated_at: str
+    version: int
+
+
+class BriefingV2(CamelModel):
+    url: Optional[str] = None          # absolute URL so the mp3 plays cross-origin
+    duration_sec: float = 0
+    generated_at: str
+    audio_url: Optional[str] = None    # additive back-compat
+    transcript: str = ""
+    chapters: List[Chapter] = Field(default_factory=list)
+
+
+class ThesisV2(CamelModel):
+    id: str
+    name: str
+    sector: str
+    stage: str
+    geography: str
+    risk: ThesisRisk
+    check_size: int
+    excluded_sectors: List[str]
+    created_at: str
+    ownership_target_pct: float
+    active: bool = False  # additive
+
+
+class ThesisV2Payload(CamelModel):
+    id: Optional[str] = None
+    name: str
+    sector: str = "All Sectors"
+    stage: str = "All Stages"
+    geography: str = "Global"
+    risk: ThesisRisk = "Balanced"
+    check_size: int = 100000
+    excluded_sectors: List[str] = Field(default_factory=list)
+    ownership_target_pct: float = 10.0
+    active: Optional[bool] = None
+
+
+class OutreachSignal(CamelModel):
+    label: str
+    detail: str
+    points: Optional[int] = None  # additive: transparent breakdown
+
+
+class OutreachState(CamelModel):
+    status: Literal["not_sent", "sent"]  # frontend enum; sends are ALWAYS simulated
+    sent_at: Optional[str] = None
+    channel: Optional[str] = None
+    draft_ready: bool = False   # additive
+    simulated: bool = True      # additive: no real message ever leaves the system
+
+
+class OutreachDraft(CamelModel):
+    subject: str
+    body: str
+    signals: List[OutreachSignal]
+    signal_strength: int
+
+
+class SendOutreachPayload(CamelModel):
+    channel: Optional[Literal["Email", "LinkedIn", "Twitter"]] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+
+
+class Artifact(CamelModel):
+    id: str
+    label: str
+    kind: Literal["deck", "cv", "video"]
+    note: str
+
+
+class IngestEntities(CamelModel):
+    signals: List[SourcingItem]
+    founders: List[Founder]
+    deals: List[Deal]           # additive vs frontend type
+    skipped: int = 0
+    errors: List[str] = Field(default_factory=list)
+
+
+class NLCriteria(CamelModel):
+    sector: Optional[str] = None
+    stage: Optional[str] = None
+    geography: Optional[str] = None
+    min_founder_score: Optional[int] = None
+    cold_start: Optional[bool] = None
+    verified_only: Optional[bool] = None
+    has_contradictions: Optional[bool] = None
+    keyword: Optional[str] = None
+    raw: str
+
+
+class SearchDealHitV2(CamelModel):
+    deal: Deal
+    match: int
+    why: List[str]
+    missing: List[str] = Field(default_factory=list)  # additive
+
+
+class SearchFounderHitV2(CamelModel):
+    founder: Founder
+    match: int
+    why: List[str]
+
+
+class SearchResponseV2(CamelModel):
+    criteria: NLCriteria
+    deals: List[SearchDealHitV2]
+    founders: List[SearchFounderHitV2]
+
+
+class TraceItem(CamelModel):
+    step: str
+    model: str
+    summary: str
+    duration_ms: int
+    created_at: str
+
+
+class MetricsSummary(CamelModel):
+    pending_count: int
+    decided_count: int
+    median_signal_to_decision_hours: Optional[float] = None
+    contradictions_caught: int
+    cold_start_count: int
+    real_sourced_count: int
+
+
+class FeedbackNote(CamelModel):
+    deal_id: Optional[str] = None
+    decision: Optional[str] = None
+    note: Optional[str] = None
+    at: Optional[str] = None
 
 
 class HealthResponse(BaseModel):

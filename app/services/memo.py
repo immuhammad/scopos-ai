@@ -29,7 +29,8 @@ def fallback_memo(deal: DealRow, claims: List[ClaimRow]) -> Dict[str, Any]:
 
 
 async def generate_memo(db: Session, deal: DealRow, axes_summary: str,
-                        errors: List[str]) -> Dict[str, Any]:
+                        errors: List[str], extra_context: str = "",
+                        ask_line: str = "Not disclosed") -> Dict[str, Any]:
     claims = db.execute(select(ClaimRow).where(ClaimRow.deal_id == deal.id)).scalars().all()
     claims_text = "\n".join(
         "- [{} | trust {}] {}{}".format(
@@ -45,9 +46,9 @@ async def generate_memo(db: Session, deal: DealRow, axes_summary: str,
         "missing write exactly 'Not disclosed' or 'Unavailable at this stage' — never "
         "pad or invent. Traction entries are short label/value pairs (include cap "
         "table / runway rows even when the value is 'Not disclosed'). Keep it tight.",
-        "DEAL: {} — {} | sector {} | stage {} | ask ${}\n\nAXES:\n{}\n\nCLAIMS:\n{}".format(
-            deal.company, deal.tagline, deal.sector, deal.stage, deal.ask_usd,
-            axes_summary[:3000], claims_text[:5000]),
+        "DEAL: {} — {} | sector {} | stage {} | funding sought: {}\n{}\nAXES:\n{}\n\nCLAIMS:\n{}".format(
+            deal.company, deal.tagline, deal.sector, deal.stage, ask_line,
+            extra_context, axes_summary[:3000], claims_text[:5000]),
         MemoLLM)
 
     if res is None:

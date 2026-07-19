@@ -73,6 +73,9 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
 
     new_signals = new_founders = new_deals = skipped = 0
     processed = 0
+    created_deal_ids: List[str] = []
+    created_founder_ids: List[str] = []
+    created_signal_ids: List[int] = []
     for post in posts:
         story_id = str(post.get("objectID"))
         if _already_ingested(db, story_id):
@@ -96,6 +99,7 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
                 created_at=_now_iso())
             db.add(founder)
             db.flush()
+            created_founder_ids.append(founder.id)
             new_founders += 1
         db.add(SignalRow(founder_id=founder.id, source="Show HN", signal_type="hn_post",
                          raw_json={"story_id": story_id, "title": title, "points": points,
@@ -103,6 +107,9 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
                                    "text": "Show HN by '{}' — {} ({} pts)".format(author, title, points)},
                          fetched_at=_now_iso()))
         db.flush()
+        last_sig = db.execute(select(SignalRow).order_by(SignalRow.id.desc())).scalars().first()
+        if last_sig is not None:
+            created_signal_ids.append(last_sig.id)
         new_signals += 1
 
         if processed >= process_limit:
@@ -118,9 +125,10 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
             founders=[ApplicationFounder(name=author, role="Other", email=email,
                                          github=gh_links[0] if gh_links else None)],
             links=links, has_deck=False)
-        deal, _, errs = await process_application(
+        deal, _, _, errs = await process_application(
             db, payload, source="Outbound — Show HN", new_contact_status="Reviewing")
         errors.extend(errs)
+        created_deal_ids.append(deal.id)
         new_deals += 1
         draft = await draft_outreach(
             db, founder.id, deal.id,
@@ -131,4 +139,6 @@ async def ingest_hn(db: Session, process_limit: int = 5) -> Dict:
 
     db.commit()
     return {"newSignals": new_signals, "newFounders": new_founders,
-            "newDeals": new_deals, "skipped": skipped, "errors": errors}
+            "newDeals": new_deals, "skipped": skipped, "errors": errors,
+            "dealIds": created_deal_ids, "founderIds": created_founder_ids,
+            "signalIds": created_signal_ids}

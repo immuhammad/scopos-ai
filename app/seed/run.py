@@ -180,7 +180,7 @@ async def seed_pipeline() -> list:
     for payload in SYNTHETIC_APPS:
         db = SessionLocal()
         try:
-            deal, matched, errors = await process_application(db, payload)
+            deal, matched, _, errors = await process_application(db, payload)
             results.append((deal.id, deal.viable, deal.is_cold_start, matched, errors))
             print("  processed {} -> deal '{}' (viable={}, matched={}, errors={})".format(
                 payload.company, deal.id, deal.viable, matched, len(errors)))

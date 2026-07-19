@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import MODEL_MINI, TAVILY_API_KEY
 from app.llm import ContradictionCheckLLM, TrustClassificationLLM, safe_parse
 from app.models import ClaimRow, DealFounderRow, DealRow, FounderRow
+from app.services.textmatch import quote_in_text
 
 
 def _now_iso() -> str:
@@ -42,13 +43,22 @@ def _tavily_search(query: str) -> Optional[List[dict]]:
 async def verify_claim(claim: ClaimRow, company: str, other_evidence: str,
                        errors: List[str]) -> None:
     """Mutates the claim row in place; appends degradation notes to errors."""
-    # 1) internal cross-artifact contradiction check
+    # 1) internal cross-artifact contradiction check — a contradiction is only
+    # accepted when the checker cites an exact quote that verifiably exists in
+    # the other artifacts (code-level guard). Absence of evidence is NEVER a
+    # contradiction.
     check, err = await safe_parse(
         "trust-internal:{}".format(claim.id), MODEL_MINI,
         "You are a VC diligence analyst. Decide whether the claim is contradicted "
         "by the founder's/deal's OTHER submitted artifacts and signals. Only flag "
         "a contradiction when evidence genuinely conflicts (e.g. deck says revenue, "
-        "artifact says waitlist-only). Absence of evidence is NOT a contradiction.",
+        "artifact says waitlist-only). If contradicted, contradicting_quote MUST be "
+        "the EXACT sentence copied verbatim from the conflicting artifact, and "
+        "artifact names which artifact it came from. Absence of evidence is NOT a "
+        "contradiction — in that case contradicted=false. Minor rounding or small "
+        "numeric drift (e.g. 8,400 vs 8,412 stars) is NOT a contradiction. A "
+        "statement that data is 'Not disclosed' or 'Unavailable' NEVER contradicts "
+        "a specific claim.",
         "CLAIM: {}\n\nOTHER ARTIFACTS AND SIGNALS:\n{}".format(claim.claim, other_evidence[:6000]),
         ContradictionCheckLLM,
     )
@@ -58,14 +68,21 @@ async def verify_claim(claim: ClaimRow, company: str, other_evidence: str,
         claim.ai_explanation = "Left unverified because the verification pipeline was unavailable."
         return
     if check.contradicted:
-        claim.status = "contradicted"
-        claim.trust_score = trust_score_for("contradicted", 0.8)
-        claim.conflicting_evidence = check.conflicting_evidence or check.explanation
-        claim.detail = check.explanation
-        claim.source = claim.source or "Cross-artifact scan"
-        claim.verified_at = _now_iso()
-        claim.ai_explanation = "Internal cross-artifact check: {}".format(check.explanation)
-        return
+        quote = check.contradicting_quote or ""
+        # degenerate-case guard: a quote that is essentially the claim's own
+        # source sentence cannot contradict it
+        self_quote = bool(claim.source_quote) and quote_in_text(quote, claim.source_quote, threshold=0.9)
+        if quote and not self_quote and quote_in_text(quote, other_evidence):
+            claim.status = "contradicted"
+            claim.trust_score = trust_score_for("contradicted", 0.8)
+            claim.conflicting_evidence = quote
+            claim.artifact = check.artifact or "Submitted artifacts"
+            claim.detail = check.explanation
+            claim.source = claim.source or "Cross-artifact scan"
+            claim.verified_at = _now_iso()
+            claim.ai_explanation = "Internal cross-artifact check: {}".format(check.explanation)
+            return
+        # quote missing or not actually present in the artifacts → stays unverified
 
     # 2) external verification via Tavily
     query = "{} {}".format(company, claim.claim)[:380]
@@ -85,7 +102,11 @@ async def verify_claim(claim: ClaimRow, company: str, other_evidence: str,
         "Classify whether external web evidence verifies, contradicts, or leaves "
         "unverified the startup claim. 'Unverified' is normal for early startups — "
         "absence of coverage is NOT a contradiction. Only 'contradicted' when "
-        "evidence actively conflicts. confidence is 0-1.",
+        "evidence actively conflicts AND is clearly about THIS company/person. "
+        "Results about a DIFFERENT company or person that merely shares a name are "
+        "NOT evidence — set evidence_is_about_this_company=false and return "
+        "unverified. Early-stage startups often have no web presence at all. "
+        "confidence is 0-1.",
         "COMPANY: {}\nCLAIM: {}\n\nSEARCH RESULTS:\n{}".format(company, claim.claim, evidence),
         TrustClassificationLLM,
     )
@@ -96,17 +117,27 @@ async def verify_claim(claim: ClaimRow, company: str, other_evidence: str,
         claim.detail = "External classification degraded; left unverified."
         claim.ai_explanation = "Search ran but classification was unavailable."
         return
-    claim.status = cls.status
-    claim.trust_score = trust_score_for(cls.status, cls.confidence)
+    status = cls.status
+    # Web evidence about private early-stage startups is collision-prone: a
+    # "contradiction" from search is almost always a same-name different-entity
+    # match. External evidence may VERIFY; it may only contradict at very high
+    # confidence with an explicit about-this-company attestation.
+    if status == "contradicted" and (cls.confidence < 0.85 or not cls.evidence_is_about_this_company):
+        status = "unverified"
+    if status == "verified" and not cls.evidence_is_about_this_company:
+        status = "unverified"
+    claim.status = status
+    claim.trust_score = trust_score_for(status, cls.confidence)
     claim.detail = cls.detail
     claim.ai_explanation = cls.explanation
     if cls.source_url:
         claim.source_url = cls.source_url
         claim.source = claim.source or "Tavily web search"
-    if cls.status in ("verified", "contradicted"):
+    if status in ("verified", "contradicted"):
         claim.verified_at = _now_iso()
-    if cls.status == "contradicted" and not claim.conflicting_evidence:
+    if status == "contradicted" and not claim.conflicting_evidence:
         claim.conflicting_evidence = cls.detail
+        claim.artifact = claim.artifact or "External web evidence"
 
 
 def refresh_deal_trust_counters(db: Session, deal: DealRow) -> None:

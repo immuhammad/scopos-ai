@@ -46,6 +46,9 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
 
     new_signals = new_founders = new_deals = skipped = 0
     processed = 0
+    created_deal_ids: List[str] = []
+    created_founder_ids: List[str] = []
+    created_signal_ids: List[int] = []
     for repo in repos:
         repo_id = repo.get("id")
         if _already_ingested(db, repo_id):
@@ -70,6 +73,7 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
                 created_at=_now_iso())
             db.add(founder)
             db.flush()
+            created_founder_ids.append(founder.id)
             new_founders += 1
         db.add(SignalRow(founder_id=founder.id, source="GitHub",
                          signal_type="github_repo_trending",
@@ -78,6 +82,9 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
                                    "text": "Repo '{}' trending — {} stars in <30d".format(name, stars)},
                          fetched_at=_now_iso()))
         db.flush()
+        last_sig = db.execute(select(SignalRow).order_by(SignalRow.id.desc())).scalars().first()
+        if last_sig is not None:
+            created_signal_ids.append(last_sig.id)
         new_signals += 1
 
         if processed >= process_limit:
@@ -91,10 +98,11 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
             founders=[ApplicationFounder(name=owner, role="Other", email=email,
                                          github="https://github.com/{}".format(owner))],
             links=[html_url] if html_url else [], has_deck=False)
-        deal, _, errs = await process_application(
+        deal, _, _, errs = await process_application(
             db, payload, source="Outbound Discovery via GitHub",
             new_contact_status="Reviewing")
         errors.extend(errs)
+        created_deal_ids.append(deal.id)
         new_deals += 1
         draft = await draft_outreach(
             db, founder.id, deal.id,
@@ -105,4 +113,6 @@ async def ingest_github(db: Session, process_limit: int = 5) -> Dict:
 
     db.commit()
     return {"newSignals": new_signals, "newFounders": new_founders,
-            "newDeals": new_deals, "skipped": skipped, "errors": errors}
+            "newDeals": new_deals, "skipped": skipped, "errors": errors,
+            "dealIds": created_deal_ids, "founderIds": created_founder_ids,
+            "signalIds": created_signal_ids}
