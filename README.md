@@ -32,7 +32,7 @@ Hack-Nation 6th Global AI Hackathon · Challenge 02 · Maschmeyer Group × MIT C
 | | |
 |---|---|
 | 📺 **Product walkthrough video** | 🚧 *Coming soon — drag the mp4 into the README via the GitHub **web editor** so it embeds as an inline player (repo-committed mp4s only render as links, which is why the previews above are GIFs)* |
-| 🖥️ **Live link** | 🚧 *Coming soon — click the **Deploy to Render** button in [Deploy](#️-deploy-live-link), then set `VITE_API_BASE_URL` in Lovable* |
+| 🖥️ **Live link** | **https://scopos-ai.vercel.app** — frontend on Vercel, API on Render ([health](https://scopos-api.onrender.com/health)); free tiers sleep, so the first load can take ~60s while the backend wakes |
 
 ## 📸 Screenshots
 
@@ -140,10 +140,11 @@ cd frontend && npm i && npm run dev
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/immuhammad/scopos-ai)
 
-1. **Backend → Render** (permanent free link — use this for the submission): click the button above (blueprint = [`render.yaml`](render.yaml)) → fill the 4 keys → deploy → open the service Shell and run `python -m app.seed.demo`. Free tier sleeps — hit `/health` ~2 min before demos.
-2. **Instant no-account link** (fallback for a live call — dies when the laptop sleeps): keep local `uvicorn` running and expose it: `brew install cloudflared && cloudflared tunnel --url http://127.0.0.1:8000` prints a public `trycloudflare.com` URL in seconds (`ngrok http 8000` works too).
-3. **Frontend → Lovable**: set `VITE_API_BASE_URL` to the backend URL from step 1 or 2 and make sure the backend's `CORS_ORIGINS` includes `https://venture-mind-os.lovable.app`.
-4. Paste the live URL here. 🚧 *Live link: coming soon.*
+**Live now**: app → **https://scopos-ai.vercel.app** · API → **https://scopos-api.onrender.com** ([`/health`](https://scopos-api.onrender.com/health)). Both free tiers sleep — hit the API `/health` ~2 min before demos; the first wake takes 30–60s.
+
+1. **Backend → Render**: click the button above (blueprint = [`render.yaml`](render.yaml)) → fill the 4 keys → deploy. The seeded `vcbrain.db` ships in the repo, so the service boots with the full demo dataset — no shell/seed step. Live writes reset to the committed snapshot on each redeploy.
+2. **Frontend → Vercel**: import this repo → set **Root Directory = `frontend`** → add env vars `VITE_API_BASE_URL = https://scopos-api.onrender.com` (**no trailing slash** — it produces `//`-prefixed API paths that 404) and `NITRO_PRESET = vercel` (Lovable's build config otherwise targets Cloudflare) → deploy. The Vercel origin must be listed in the backend's `CORS_ORIGINS` (already in `render.yaml`).
+3. **Instant no-account fallback** for a live call: `brew install cloudflared && cloudflared tunnel --url http://127.0.0.1:8000` exposes the local backend in seconds (`ngrok http 8000` works too).
 
 ## 🚧 Coming soon
 

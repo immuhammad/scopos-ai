@@ -1,8 +1,10 @@
 # Render blueprint — deploy the Scopos backend with one click:
 #   https://dashboard.render.com/blueprints → New Blueprint Instance → point at this repo.
-# Fill the four secret keys when prompted. NOTE: the free plan has no persistent
-# disk — SQLite resets on redeploy; after the first boot open the service Shell
-# and run `python -m app.seed.demo` (~20 min of live LLM calls) to seed.
+# Fill the four secret keys when prompted. The seeded vcbrain.db is COMMITTED,
+# so the service boots with the full demo dataset — no shell/seed step (the free
+# plan has no shell anyway). No persistent disk: live writes reset to the
+# committed snapshot on every redeploy/wake. The frontend lives on Vercel
+# (README §Deploy); its origin must stay listed in CORS_ORIGINS below.
 services:
   - type: web
     name: scopos-api
@@ -25,4 +27,4 @@ services:
       - key: DATABASE_URL
         value: sqlite:///./vcbrain.db
       - key: CORS_ORIGINS
-        value: https://venture-mind-os.lovable.app,http://localhost:8080,http://localhost:5173
+        value: https://venture-mind-os.lovable.app,https://scopos-ai.vercel.app,http://localhost:8080,http://localhost:5173

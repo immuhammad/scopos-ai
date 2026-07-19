@@ -46,9 +46,9 @@ Data Architecture & Intelligence 30% · Investment Utility (actionable in 24h) 3
 - [x] Frontend v2 in Lovable: api.ts layer, founders memory, team coverage, evidence panel, pipeline stages
 - [ ] Frontend punch list (docs/04 §punch-list): submitApplication store insert, thesis engine, NL search, /feed, /triage swipe, CV field, numeric trustScore
 - [x] Backend repo created + contract/ copied (docs/03 Step 1) — built IN this repo (no separate vc-brain-api); Python 3.9
-- [x] Backend built via one-go prompt + smoke tests green (docs/03 Step 2) — 36/36, merged PR #1; seeded vcbrain.db in repo root
-- [ ] Render deploy + seed (docs/03 Step 3)
-- [ ] Merge: USE_MOCKS=false (docs/03 Step 4)
+- [x] Backend built via one-go prompt + smoke tests green (docs/03 Step 2) — 36/36, merged PR #1; seeded vcbrain.db COMMITTED to the repo (deploys boot with data; live writes reset to the snapshot on redeploy)
+- [x] Deployed live (docs/03 Step 3): backend → Render https://scopos-api.onrender.com (blueprint render.yaml, no shell seeding), frontend → Vercel https://scopos-ai.vercel.app (Root Directory `frontend`, env `NITRO_PRESET=vercel`, `VITE_API_BASE_URL` with NO trailing slash); Vercel origin in CORS_ORIGINS
+- [x] Merge: USE_MOCKS=false (docs/03 Step 4) — frontend fetches the live API by default
 - [ ] Demo rehearsed + backup recording + submission (docs/05)
 
 ## Doc map
