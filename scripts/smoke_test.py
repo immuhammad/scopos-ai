@@ -154,9 +154,11 @@ def t7_decide(smoke_deal_id):
     r = client.post("/deals/{}/decide".format(did),
                     json={"decision": "continue_diligence", "note": "smoke test decision"})
     ok = r.status_code == 200
-    deal = r.json() if ok else {}
-    check("7b decide with note updates stage + audit",
-          ok and deal["pipelineStage"] == "Diligence" and deal.get("auditTrail"),
+    rec = r.json() if ok else {}
+    deal = client.get("/deals/{}".format(did)).json() if ok else {}
+    check("7b decide returns DecisionRecord + stage/audit updated",
+          ok and rec.get("kind") == "continue_diligence"
+          and deal.get("pipelineStage") == "Diligence" and deal.get("auditTrail"),
           r.text[:200])
 
 
