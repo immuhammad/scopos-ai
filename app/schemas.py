@@ -270,6 +270,7 @@ class ApplicationResponse(CamelModel):
     new_founder_ids: List[str] = Field(default_factory=list)
     deal: Optional[Deal] = None  # None when filtered as non-viable
     viable: bool = True
+    filter_reason: Optional[str] = None  # set when viable=False (additive field)
     errors: List[str] = Field(default_factory=list)
 
 

@@ -41,7 +41,9 @@ async def submit_application(payload: schemas.ApplicationPayload,
     return schemas.ApplicationResponse(
         deal_id=deal.id, matched_founder_ids=matched, new_founder_ids=new_ids,
         deal=deal_to_contract(db, deal) if deal.viable else None,
-        viable=bool(deal.viable), errors=errors)
+        viable=bool(deal.viable),
+        filter_reason=None if deal.viable else deal.filter_reason,
+        errors=errors)
 
 
 # ---- theses (frontend singular shape + ownership target + feedback loop) ----

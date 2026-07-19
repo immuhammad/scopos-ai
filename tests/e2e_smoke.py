@@ -151,9 +151,28 @@ def main():  # noqa: C901 — linear test script
     missing_ids = [i for i in listed if i not in db_ids and i not in ("ai-infra-us-seed", "european-cold-start-founders", "amara-okafor", "mara-lindqvist", "june-okonkwo")]
     lead_stages = ("Sourced", "Invited", "Screening", "Diligence")
     unexplained = [d["id"] for d in all_deals if d["id"] not in listed
-                   and d["source"].startswith("Inbound")]
+                   and d["source"].startswith("Inbound")
+                   and not d["id"].startswith("smokewalk-systems")]  # e2e-created (see DATA.md)
     check("DATA.md: every listed deal exists", not missing_ids, str(missing_ids))
     check("DATA.md: no unexplained inbound deals", not unexplained, str(unexplained))
+
+    # ── tier-1 pre-screen: junk is stored non-viable at zero LLM cost ──
+    r = client.post("/applications", json={
+        "company": "zzzzzz", "tagline": "kjhgfd http://spam.example",
+        "founders": [{"name": "qqqqq", "role": "CEO", "email": "spam@mash.example"}],
+        "links": [], "hasDeck": False})
+    pj = r.json() if r.status_code == 200 else {}
+    check("prescreen: junk → 200 + viable:false + filterReason",
+          r.status_code == 200 and pj.get("viable") is False and bool(pj.get("filterReason")),
+          r.text[:200])
+    ptr = client.get("/deals/{}/trace".format(pj.get("dealId"))).json() if pj.get("dealId") else []
+    check("prescreen: model-free trace step, zero LLM steps",
+          any(t["step"] == "prescreen" for t in ptr) and not any(t["model"] for t in ptr),
+          str(ptr)[:200])
+    check("prescreen: no founder records, junk out of dealflow",
+          pj.get("matchedFounderIds") == [] and pj.get("newFounderIds") == [] and
+          pj.get("dealId") not in {d["id"] for d in client.get("/deals?status=all").json()},
+          str(pj)[:200])
 
     # ── slow live steps ──
     if not FAST:
@@ -180,15 +199,30 @@ def main():  # noqa: C901 — linear test script
         check("convergence trace labeled simulated",
               any(t["step"] == "simulated-application" for t in tr))
 
-        # inbound application still works end-to-end
-        r = client.post("/applications", json={
+        # inbound application still works end-to-end (two-tier screening)
+        smoke_app = {
             "company": "Smokewalk Systems",
             "tagline": "Continuous e2e smoke testing for AI-era backends.",
             "founders": [{"name": "Es Ember", "role": "CEO", "email": "es@smokewalk.dev"}],
-            "links": [], "hasDeck": False, "askUsd": 120000})
+            "links": [], "hasDeck": False, "askUsd": 120000}
+        r = client.post("/applications", json=smoke_app)
         body = r.json() if r.status_code == 200 else {}
-        check("live application 200 + askUsd stored", r.status_code == 200 and
-              (body.get("deal") or {}).get("askUsd") == 120000, r.text[:200])
+        if body.get("viable"):
+            check("live application 200 + askUsd stored", r.status_code == 200 and
+                  (body.get("deal") or {}).get("askUsd") == 120000, r.text[:200])
+            steps2 = [t["step"] for t in client.get(
+                "/deals/{}/trace".format(body["dealId"])).json()]
+            check("two-tier screening traced (prescreen before filter)",
+                  "prescreen" in steps2 and "filter" in steps2 and
+                  steps2.index("prescreen") < steps2.index("filter"), str(steps2[:4]))
+            r2 = client.post("/applications", json=smoke_app)
+            b2 = r2.json() if r2.status_code == 200 else {}
+            check("duplicate resubmission (<24h) blocked at zero LLM cost",
+                  r2.status_code == 200 and b2.get("viable") is False and
+                  "uplicate" in (b2.get("filterReason") or ""), r2.text[:300])
+        else:
+            check("live application duplicate-guarded (suite re-ran <24h)",
+                  "uplicate" in (body.get("filterReason") or ""), r.text[:300])
 
     failed = [x for x in RESULTS if not x[1]]
     print("\n=== {} passed, {} failed ===".format(len(RESULTS) - len(failed), len(failed)))

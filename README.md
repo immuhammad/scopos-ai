@@ -23,8 +23,9 @@ Hack-Nation 6th Global AI Hackathon · Challenge 02 · Maschmeyer Group × MIT C
 
 | | |
 |---|---|
+| 📱 **Mobile triage preview — clip 1** | [`docs/media/triage-swipe-1.mp4`](docs/media/triage-swipe-1.mp4) — the mobile-first `/triage` swipe card on a strong deal: three independent axes, thesis match, next action (repo mp4s are click-to-play on GitHub) |
+| 📱 **Mobile triage preview — clip 2** | [`docs/media/triage-swipe-2.mp4`](docs/media/triage-swipe-2.mp4) — the same swipe card on a **cold-start** deal: wider uncertainty, lower thesis fit, still first-class |
 | 📺 **Product walkthrough video** | 🚧 *Coming soon — drop `demo-walkthrough.mp4` into `docs/media/` (or attach via the GitHub editor so it embeds inline)* |
-| 📱 **Mobile triage video** | 🚧 *Coming soon — the swipe-based `/triage` flow is mobile-first; record on a phone and drop into `docs/media/`* |
 | 🖥️ **Live link** | 🚧 *Coming soon — one-click backend deploy via [`render.yaml`](render.yaml), then set `VITE_API_BASE_URL` in Lovable (steps in [Deploy](#-deploy-live-link))* |
 
 ## 📸 Screenshots
@@ -79,7 +80,7 @@ flowchart LR
 | 1 | **Founder Score** — a credit score for founders; persists, never resets; one input to every decision | Per-person score with transparent point components, history timeline, repeat-founder bonus; feeds the Founder Axis as ONE labeled input | ✅ Live |
 | 2 | **Data Management** — collect, validate, structure heterogeneous data | Append-only signal store (decks, CVs, HN posts, repos, feedback); dedup by email→handle; PDF text extraction; idempotent migrations | ✅ Live |
 | 3 | **Multi-Attribute Reasoning** — complex natural-language queries | NL search: one LLM parse → criteria chips → deterministic scorer with match % / why / missing | ✅ Live |
-| 4 | **Inbound** — apply with deck + name minimum; fast first-pass screen | Public portal (company + founder + deck), server-side PDF parsing, viability filter, live stepped progress → receipts | ✅ Live |
+| 4 | **Inbound** — apply with deck + name minimum; fast first-pass screen | Public portal (company + founder + deck), server-side PDF parsing, two-tier screening (zero-cost deterministic pre-screen → LLM viability filter), live stepped progress → receipts | ✅ Live |
 | 5 | **Outbound** — Identify · Activate · Converge, one funnel | Real HN + GitHub scans create leads; outreach drafts (sends simulated); convergence runs the full inbound pipeline on the same founder | ✅ Live (converge demo-labeled) |
 | 6 | **Multi-Axis Screening** — three independent axes, never averaged, with trends | Founder / Market (Bullish·Neutral·Bear, no numeric score) / Idea-vs-Market; trends from real version comparison | ✅ Live |
 | 7 | **Evidence-backed memos & Trust Score** — every claim traces to evidence; flag contradictions | Quote-anchored claims (no quote → no claim), per-claim 0–100 Trust Score, cross-artifact + Tavily verification, contradictions forced into memo risks, gaps say “Not disclosed” | ✅ Live |
@@ -110,7 +111,7 @@ flowchart LR
 | `app/` | FastAPI backend — pipeline, trust radar, memos, leads, metrics |
 | `frontend/` | The Scopos web app (TanStack Start + shadcn; mirrored from the Lovable-managed `venture-mind-os` repo via `scripts/sync-frontend.sh`) |
 | `docs/` | Planning docs, challenge brief PDF, `DATA.md`, screenshots in `docs/media/` |
-| `tests/` | `python -m tests.e2e_smoke` — 41-check suite |
+| `tests/` | `python -m tests.e2e_smoke` — 46-check suite |
 | `contract/` | Frozen frontend API contract the backend conforms to |
 
 ## 🚀 Run locally
@@ -140,7 +141,7 @@ cd frontend && npm i && npm run dev
 - arXiv / ProductHunt / accelerator-cohort / hackathon-winner sourcing channels (chips already in the Sourcing page)
 - Sourcing-graph network intelligence (stretch goal 3)
 - Real authentication & real outreach delivery (simulated by design today)
-- Server-side pagination · scanned-deck OCR · the two demo videos above
+- Server-side pagination · scanned-deck OCR · the product walkthrough video above
 
 ---
 

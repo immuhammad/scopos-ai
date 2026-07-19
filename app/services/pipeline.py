@@ -25,6 +25,7 @@ from app.services.founder_score import recompute_founder_score
 from app.services.github_enrich import enrich_github, handle_from_url
 from app.services.memo import generate_memo
 from app.services.pdftext import extract_pdf_text
+from app.services.prescreen import prescreen_application
 from app.services.slugs import unique_slug
 from app.services.textmatch import quote_in_text
 from app.services.trace import record_trace, traced
@@ -290,6 +291,27 @@ async def process_application(db: Session, payload: ApplicationPayload,
     errors: List[str] = []
     now = _now_iso()
 
+    # tier-1 deterministic pre-screen — obvious junk never spends an LLM call
+    reject = prescreen_application(db, payload)
+    if reject is not None:
+        deal = DealRow(
+            id=unique_slug(db, DealRow, payload.company or "application"),
+            company=(payload.company or "").strip() or "(unnamed)",
+            tagline=payload.tagline or "",
+            sector=payload.sector or "Not disclosed", stage=payload.stage or "Not disclosed",
+            geography=payload.geography or "Not disclosed", source=source,
+            pipeline_stage="Application Received", stage_started_at=now,
+            next_action="Filtered by pre-screen: {}".format(reject),
+            links=[], created_at=now, ask_usd=payload.ask_usd or 100000,
+            first_signal_at=now,
+            decision_deadline=(datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+            viable=False, filter_reason=reject, errors=[])
+        db.add(deal)
+        record_trace(db, deal.id, "prescreen", "",
+                     "REJECTED (tier 1, zero LLM cost): {}".format(reject))
+        db.commit()
+        return deal, [], [], errors
+
     # founder dedup — one human = one founder record across all projects
     founder_rows: List[FounderRow] = []
     matched: List[str] = []
@@ -368,8 +390,10 @@ async def process_application(db: Session, payload: ApplicationPayload,
         db.add(SignalRow(deal_id=deal_id, source="Application", signal_type="link",
                          raw_json={"url": url}, fetched_at=now))
     db.flush()
+    record_trace(db, deal.id, "prescreen", "",
+                 "passed tier-1 deterministic checks — zero LLM cost so far")
 
-    # first-pass viability filter — non-viable stays in DB, out of dealflow
+    # tier-2 LLM viability filter — non-viable stays in DB, out of dealflow
     with traced(db, deal.id, "filter", MODEL_MINI) as t:
         verdict, err = await safe_parse(
             "filter", MODEL_MINI,
