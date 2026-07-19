@@ -21,12 +21,18 @@ Hack-Nation 6th Global AI Hackathon · Challenge 02 · Maschmeyer Group × MIT C
 
 ## 🎬 Demo
 
+<p align="center">
+  <img src="docs/media/triage-swipe-1.gif" width="270" alt="Mobile triage — swiping from a cold-start deal to a strong deal" />
+  &nbsp;&nbsp;
+  <img src="docs/media/triage-swipe-2.gif" width="270" alt="Mobile triage — swiping from a strong deal back to a cold-start deal" />
+</p>
+
+<p align="center"><em>The mobile-first <code>/triage</code> swipe flow between a <strong>cold-start</strong> deal (wider uncertainty, still first-class) and a strong deal — three independent axes, thesis match, and a concrete next action on every card. Source clips: <a href="docs/media/triage-swipe-1.mp4"><code>triage-swipe-1.mp4</code></a> · <a href="docs/media/triage-swipe-2.mp4"><code>triage-swipe-2.mp4</code></a>.</em></p>
+
 | | |
 |---|---|
-| 📱 **Mobile triage preview — clip 1** | [`docs/media/triage-swipe-1.mp4`](docs/media/triage-swipe-1.mp4) — the mobile-first `/triage` swipe card on a strong deal: three independent axes, thesis match, next action (repo mp4s are click-to-play on GitHub) |
-| 📱 **Mobile triage preview — clip 2** | [`docs/media/triage-swipe-2.mp4`](docs/media/triage-swipe-2.mp4) — the same swipe card on a **cold-start** deal: wider uncertainty, lower thesis fit, still first-class |
-| 📺 **Product walkthrough video** | 🚧 *Coming soon — drop `demo-walkthrough.mp4` into `docs/media/` (or attach via the GitHub editor so it embeds inline)* |
-| 🖥️ **Live link** | 🚧 *Coming soon — one-click backend deploy via [`render.yaml`](render.yaml), then set `VITE_API_BASE_URL` in Lovable (steps in [Deploy](#-deploy-live-link))* |
+| 📺 **Product walkthrough video** | 🚧 *Coming soon — drag the mp4 into the README via the GitHub **web editor** so it embeds as an inline player (repo-committed mp4s only render as links, which is why the previews above are GIFs)* |
+| 🖥️ **Live link** | 🚧 *Coming soon — click the **Deploy to Render** button in [Deploy](#️-deploy-live-link), then set `VITE_API_BASE_URL` in Lovable* |
 
 ## 📸 Screenshots
 
@@ -132,9 +138,12 @@ cd frontend && npm i && npm run dev
 
 ## ☁️ Deploy (live link)
 
-1. **Backend → Render**: New Blueprint Instance → point at this repo ([`render.yaml`](render.yaml)) → fill the 4 keys → deploy → open the service Shell and run `python -m app.seed.demo`. Free tier sleeps — hit `/health` ~2 min before demos.
-2. **Frontend → Lovable**: set `VITE_API_BASE_URL` to the Render URL and add that origin to `CORS_ORIGINS`; the published app is at `https://venture-mind-os.lovable.app`.
-3. Paste the live URL here. 🚧 *Live link: coming soon.*
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/immuhammad/scopos-ai)
+
+1. **Backend → Render** (permanent free link — use this for the submission): click the button above (blueprint = [`render.yaml`](render.yaml)) → fill the 4 keys → deploy → open the service Shell and run `python -m app.seed.demo`. Free tier sleeps — hit `/health` ~2 min before demos.
+2. **Instant no-account link** (fallback for a live call — dies when the laptop sleeps): keep local `uvicorn` running and expose it: `brew install cloudflared && cloudflared tunnel --url http://127.0.0.1:8000` prints a public `trycloudflare.com` URL in seconds (`ngrok http 8000` works too).
+3. **Frontend → Lovable**: set `VITE_API_BASE_URL` to the backend URL from step 1 or 2 and make sure the backend's `CORS_ORIGINS` includes `https://venture-mind-os.lovable.app`.
+4. Paste the live URL here. 🚧 *Live link: coming soon.*
 
 ## 🚧 Coming soon
 
