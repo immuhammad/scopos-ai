@@ -29,7 +29,8 @@ async def run_search(db: Session, query: str) -> Dict:
         # degrade to a keyword-only search, never 500
         parsed = SearchCriteriaLLM(criteria=[query], sectors=[], geographies=[],
                                    stages=[], keywords=[query.split()[0]] if query.split() else [],
-                                   cold_start_only=None, min_founder_score=None)
+                                   cold_start_only=None, min_founder_score=None,
+                                   verified_only=None, has_contradictions=None)
 
     # (chip label, kind, value) triples keep chips and scoring aligned
     checks: List[Tuple[str, str, str]] = []
@@ -43,6 +44,10 @@ async def run_search(db: Session, query: str) -> Dict:
         checks.append(("Keyword: {}".format(k), "keyword", k))
     if parsed.cold_start_only:
         checks.append(("Cold-start founder", "cold_start", ""))
+    if parsed.verified_only:
+        checks.append(("No open alerts", "verified_only", ""))
+    if parsed.has_contradictions:
+        checks.append(("Has contradictions", "has_contradictions", ""))
     if parsed.min_founder_score is not None:
         checks.append(("Founder Score ≥ {}".format(parsed.min_founder_score),
                        "min_score", str(parsed.min_founder_score)))
@@ -79,6 +84,12 @@ async def run_search(db: Session, query: str) -> Dict:
             elif kind == "cold_start":
                 hit = bool(deal.is_cold_start)
                 hit and why.append("Cold-start deal (isColdStart)")
+            elif kind == "verified_only":
+                hit = (deal.alerts or 0) == 0
+                hit and why.append("No open alerts")
+            elif kind == "has_contradictions":
+                hit = (deal.alerts or 0) > 0
+                hit and why.append("{} contradiction(s)".format(deal.alerts))
             elif kind == "min_score":
                 hit = max_score >= int(value)
                 hit and why.append("{} (best Founder Score: {})".format(label, max_score))
@@ -87,7 +98,7 @@ async def run_search(db: Session, query: str) -> Dict:
         if why:
             deal_hits.append({"id": deal.id,
                               "matchPct": int(round(100 * len(why) / len(checks))),
-                              "why": "; ".join(why), "missing": missing})
+                              "why": why, "missing": missing})
 
     founder_hits = []
     for f in db.execute(select(FounderRow)).scalars().all():
@@ -111,9 +122,20 @@ async def run_search(db: Session, query: str) -> Dict:
         if why and applicable:
             founder_hits.append({"id": f.id,
                                  "matchPct": int(round(100 * len(why) / applicable)),
-                                 "why": "; ".join(why)})
+                                 "why": why})
 
     deal_hits.sort(key=lambda h: -h["matchPct"])
     founder_hits.sort(key=lambda h: -h["matchPct"])
-    return {"criteria": [c[0] for c in checks], "deals": deal_hits[:20],
-            "founders": founder_hits[:20]}
+    criteria_obj = {
+        "sector": parsed.sectors[0] if parsed.sectors else None,
+        "stage": parsed.stages[0] if parsed.stages else None,
+        "geography": parsed.geographies[0] if parsed.geographies else None,
+        "minFounderScore": parsed.min_founder_score,
+        "coldStart": parsed.cold_start_only,
+        "verifiedOnly": parsed.verified_only,
+        "hasContradictions": parsed.has_contradictions,
+        "keyword": parsed.keywords[0] if parsed.keywords else None,
+        "raw": query,
+    }
+    return {"criteria": criteria_obj, "chips": [c[0] for c in checks],
+            "deals": deal_hits[:20], "founders": founder_hits[:20]}

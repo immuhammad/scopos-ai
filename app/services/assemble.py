@@ -106,7 +106,12 @@ def deal_to_contract(db: Session, deal: DealRow) -> schemas.Deal:
         audit_trail=[schemas.AuditEntry(decision=a.decision, note=a.note,
                                         conditions=a.conditions, timestamp=a.timestamp)
                      for a in audit] or None,
-        errors=list(deal.errors) if deal.errors else None)
+        errors=list(deal.errors) if deal.errors else None,
+        first_signal_at=deal.first_signal_at,
+        decided_at=deal.decided_at,
+        signal_to_decision_hours=(
+            round(hours_since(deal.first_signal_at) - hours_since(deal.decided_at), 1)
+            if deal.first_signal_at and deal.decided_at else None))
 
 
 def founder_to_contract(db: Session, f: FounderRow) -> schemas.Founder:
