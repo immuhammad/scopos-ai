@@ -22,6 +22,14 @@ Hack-Nation 6th Global AI Hackathon · Challenge 02 · Maschmeyer Group × MIT C
 ## 🎬 Demo
 
 <p align="center">
+  <a href="docs/media/scopos-demo.mp4">
+    <img src="docs/media/demo-poster.jpg" width="820" alt="Watch the Scopos product walkthrough — 55-second narrated demo" />
+  </a>
+</p>
+
+<p align="center"><em>▶ <strong>55-second narrated walkthrough</strong> — click the poster to play (opens GitHub's video viewer). Sourcing → screening → quote-anchored diligence → the 24-hour $100K decision.</em></p>
+
+<p align="center">
   <img src="docs/media/triage-swipe-1.gif" width="270" alt="Mobile triage — swiping from a cold-start deal to a strong deal" />
   &nbsp;&nbsp;
   <img src="docs/media/triage-swipe-2.gif" width="270" alt="Mobile triage — swiping from a strong deal back to a cold-start deal" />
@@ -31,7 +39,7 @@ Hack-Nation 6th Global AI Hackathon · Challenge 02 · Maschmeyer Group × MIT C
 
 | | |
 |---|---|
-| 📺 **Product walkthrough video** | 🚧 *Coming soon — drag the mp4 into the README via the GitHub **web editor** so it embeds as an inline player (repo-committed mp4s only render as links, which is why the previews above are GIFs)* |
+| 📺 **Product walkthrough** | ▶ [55-second narrated demo](docs/media/scopos-demo.mp4) (also embedded above). For an auto-playing inline player, drag the mp4 into this README via GitHub's **web editor** — repo-committed mp4s open in the file viewer rather than embedding inline. |
 | 🖥️ **Live link** | **https://scopos-ai.vercel.app** — frontend on Vercel, API on Render ([health](https://scopos-api.onrender.com/health)); free tiers sleep, so the first load can take ~60s while the backend wakes |
 
 ## 📸 Screenshots
@@ -151,7 +159,7 @@ cd frontend && npm i && npm run dev
 - arXiv / ProductHunt / accelerator-cohort / hackathon-winner sourcing channels (chips already in the Sourcing page)
 - Sourcing-graph network intelligence (stretch goal 3)
 - Real authentication & real outreach delivery (simulated by design today)
-- Server-side pagination · scanned-deck OCR · the product walkthrough video above
+- Server-side pagination · scanned-deck OCR
 
 ---
 
